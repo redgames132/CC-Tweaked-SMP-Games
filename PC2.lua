@@ -6,7 +6,6 @@ if not monitor then
     return
 end
 
--- Scale 1.5 is perfect for a 2x2 monitor to give it a chunky arcade feel
 monitor.setTextScale(1.5) 
 local w, h = monitor.getSize()
 local highScore = 0
@@ -35,8 +34,8 @@ end
 local function drawMenu()
     clearScreen(colors.cyan)
     
-    drawCentered(" PIXEL CATCHER ", math.floor(h/2) - 2, colors.yellow, colors.cyan)
-    drawCentered(" Best Score: " .. highScore .. " ", math.floor(h/2), colors.white, colors.cyan)
+    drawCentered(" PIXEL CATCHER ", math.floor(h/2) - 3, colors.yellow, colors.cyan)
+    drawCentered(" Best Score: " .. highScore .. " ", math.floor(h/2) - 1, colors.white, colors.cyan)
     
     local btnY = math.floor(h/2) + 2
     local btnText = " [ PLAY ] "
@@ -68,6 +67,10 @@ local function playGame()
     local lives = 3
     local playing = true
     
+    -- Power-up Timers
+    local wideTimer = 0
+    local freezeTimer = 0
+    
     -- PHYSICS & DIFFICULTY
     local fpsTimer = 0.05 -- 20 FPS
     local baseFallSpeed = 0.2
@@ -97,19 +100,43 @@ local function playGame()
             if paddleX > w - paddleWidth + 1 then paddleX = w - paddleWidth + 1 end
             
         elseif event == "timer" and p1 == gameTimer then
-            -- Difficulty increases as score goes up
+            
+            -- Manage Power-up Timers
+            if wideTimer > 0 then
+                wideTimer = wideTimer - 1
+                paddleWidth = 5
+            else
+                paddleWidth = 3
+            end
+            
+            -- Adjust paddle boundary if width just shrank
+            if paddleX > w - paddleWidth + 1 then paddleX = w - paddleWidth + 1 end
+
             local currentFallSpeed = baseFallSpeed + math.min(0.3, score * 0.005)
             local currentSpawnRate = baseSpawnRate + math.min(0.15, score * 0.002)
+            local bgColor = colors.cyan
+
+            if freezeTimer > 0 then
+                freezeTimer = freezeTimer - 1
+                currentFallSpeed = currentFallSpeed * 0.35 -- Slow motion!
+                bgColor = colors.lightBlue -- Icy visual effect
+            end
             
             -- 1. Spawn New Objects
             if math.random() < currentSpawnRate then
                 local objType = "apple"
                 local rand = math.random(1, 100)
                 
-                if rand <= 15 then
-                    objType = "bomb"  -- 15% chance for a bomb (avoid!)
+                if rand <= 18 then
+                    objType = "bomb"   -- 18% Bomb
                 elseif rand >= 95 then
-                    objType = "star"  -- 5% chance for a star (bonus points!)
+                    objType = "star"   -- 5% Star
+                elseif rand >= 92 then
+                    objType = "heart"  -- 3% Extra Life
+                elseif rand >= 88 then
+                    objType = "freeze" -- 4% Slow Motion
+                elseif rand >= 83 then
+                    objType = "wide"   -- 5% Wide Basket
                 end
                 
                 table.insert(objects, {
@@ -134,21 +161,29 @@ local function playGame()
                             playSound("entity.item.pickup", 1.5)
                         elseif obj.type == "star" then
                             score = score + 5
-                            playSound("entity.player.levelup", 1.5)
+                            playSound("entity.experience_orb.pickup", 1.5)
                         elseif obj.type == "bomb" then
                             lives = lives - 1
                             playSound("entity.generic.explode", 1.0)
-                            clearScreen(colors.red) -- Flash screen red
-                            sleep(0.1)
+                            bgColor = colors.red -- Flash screen red
+                        elseif obj.type == "heart" then
+                            lives = math.min(lives + 1, 5) -- Max 5 lives
+                            playSound("entity.player.levelup", 2.0)
+                        elseif obj.type == "wide" then
+                            wideTimer = 100 -- 5 seconds
+                            playSound("block.amethyst_block.chime", 1.0)
+                        elseif obj.type == "freeze" then
+                            freezeTimer = 100 -- 5 seconds
+                            playSound("block.glass.break", 1.5)
                         end
                     else
                         -- Missed the object
                         if obj.type == "apple" or obj.type == "star" then
-                            -- Missing good items costs a life!
+                            -- Missing good core items costs a life!
                             lives = lives - 1
                             playSound("block.note_block.bass", 0.5)
                         end
-                        -- Missing a bomb is good, do nothing!
+                        -- Missing bombs or power-ups does nothing
                     end
                     
                     table.remove(objects, i)
@@ -162,7 +197,7 @@ local function playGame()
             if not playing then break end
             
             -- 3. Render Graphics
-            monitor.setBackgroundColor(colors.cyan)
+            monitor.setBackgroundColor(bgColor)
             monitor.clear()
             
             -- Draw Objects
@@ -182,14 +217,30 @@ local function playGame()
                     monitor.setBackgroundColor(colors.yellow)
                     monitor.setTextColor(colors.orange)
                     monitor.write("$")
+                elseif obj.type == "heart" then
+                    monitor.setBackgroundColor(colors.pink)
+                    monitor.setTextColor(colors.white)
+                    monitor.write("V")
+                elseif obj.type == "wide" then
+                    monitor.setBackgroundColor(colors.blue)
+                    monitor.setTextColor(colors.white)
+                    monitor.write("W")
+                elseif obj.type == "freeze" then
+                    monitor.setBackgroundColor(colors.white)
+                    monitor.setTextColor(colors.lightBlue)
+                    monitor.write("F")
                 end
             end
             
-            -- Draw Paddle (Basket)
+            -- Draw Paddle (Basket Design)
             monitor.setCursorPos(paddleX, paddleY)
-            monitor.setBackgroundColor(colors.blue)
+            monitor.setBackgroundColor(colors.brown)
             monitor.setTextColor(colors.white)
-            monitor.write(string.rep("=", paddleWidth))
+            if paddleWidth == 3 then
+                monitor.write("\\_/")
+            else
+                monitor.write("\\___/")
+            end
             
             -- Draw Top UI
             monitor.setCursorPos(1, 1)
