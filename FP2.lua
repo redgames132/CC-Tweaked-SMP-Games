@@ -36,21 +36,26 @@ local function playGame()
     local birdY = math.floor(h / 2)
     local velocity = 0
     
-    -- ADJUSTED PHYSICS FOR 20 FPS
+    -- PHYSICS FOR 20 FPS
     local gravity = 0.22
     local jumpPower = -1.15
-    local gameSpeed = 0.5 -- How much the pipes move per frame
-    local fpsTimer = 0.05 -- 20 Frames Per Second
+    local gameSpeed = 0.5 
+    local fpsTimer = 0.05 
     
     local score = 0
     local pillars = {}
     local playing = true
     
-    -- EASIER DIFFICULTY SETTINGS
-    local gapSize = 8 
+    -- FIXED DIFFICULTY SETTINGS
+    local gapSize = 5 -- Lowered from 8 to fit the screen
     local pillarSpacing = 24 
     
-    table.insert(pillars, {x = w, gapTop = math.random(3, h - gapSize - 2), passed = false})
+    -- Bulletproof spawn for first pillar
+    table.insert(pillars, {
+        x = w, 
+        gapTop = math.random(2, math.max(2, h - gapSize - 1)), 
+        passed = false
+    })
 
     for i = 3, 1, -1 do
         clearScreen(colors.lightBlue)
@@ -98,7 +103,12 @@ local function playGame()
             
             -- 3. Spawn New Pillars
             if (w - pillars[#pillars].x) >= pillarSpacing then
-                table.insert(pillars, {x = w, gapTop = math.random(2, h - gapSize - 1), passed = false})
+                -- Bulletproof spawn for continuing pillars
+                table.insert(pillars, {
+                    x = w, 
+                    gapTop = math.random(2, math.max(2, h - gapSize - 1)), 
+                    passed = false
+                })
             end
             
             -- 4. Check Collisions
