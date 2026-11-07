@@ -9,6 +9,7 @@ end
 monitor.setTextScale(1.0) 
 local w, h = monitor.getSize()
 local highScore = 0
+local floorY = h -- The bottom row is now the ground
 
 math.randomseed(os.epoch("utc"))
 
@@ -31,37 +32,72 @@ local function clearScreen(color)
     monitor.clear()
 end
 
+local function drawMenu()
+    clearScreen(colors.lightBlue)
+    
+    -- Draw Ground
+    monitor.setBackgroundColor(colors.green)
+    monitor.setCursorPos(1, floorY)
+    monitor.write(string.rep(" ", w))
+    
+    drawCentered(" FLAPPY PIXEL ", math.floor(h/2) - 2, colors.yellow, colors.lightBlue)
+    drawCentered(" Best Score: " .. highScore .. " ", math.floor(h/2), colors.white, colors.lightBlue)
+    
+    local btnY = math.floor(h/2) + 2
+    local btnText = " [ PLAY ] "
+    drawCentered(btnText, btnY, colors.white, colors.lime)
+    
+    while true do
+        local event, p1, p2, p3 = os.pullEvent("monitor_touch")
+        local touchX, touchY = p2, p3
+        
+        local btnStartX = math.floor((w - #btnText) / 2) + 1
+        local btnEndX = btnStartX + #btnText - 1
+        
+        if touchY == btnY and touchX >= btnStartX and touchX <= btnEndX then
+            playSound("block.note_block.pling", 1.5)
+            drawCentered(btnText, btnY, colors.white, colors.green)
+            sleep(0.2)
+            break
+        end
+    end
+end
+
 local function playGame()
     local birdX = math.floor(w * 0.3)
     local birdY = math.floor(h / 2)
     local velocity = 0
+    local birdChar = ">" -- Changes when flapping
     
     -- PHYSICS FOR 20 FPS
-    local gravity = 0.22
-    local jumpPower = -1.15
-    local gameSpeed = 0.5 
+    local gravity = 0.12
+    local jumpPower = -0.85
+    local baseSpeed = 0.45 
     local fpsTimer = 0.05 
     
     local score = 0
     local pillars = {}
     local playing = true
     
-    -- FIXED DIFFICULTY SETTINGS
     local gapSize = 5 
     local pillarSpacing = 24 
     
-    -- Bulletproof spawn for first pillar
+    -- Spawn first pillar
     table.insert(pillars, {
         x = w, 
-        gapTop = math.random(2, math.max(2, h - gapSize - 1)), 
+        gapTop = math.random(2, math.max(2, floorY - gapSize - 1)), 
         passed = false
     })
 
+    -- Countdown
     for i = 3, 1, -1 do
         clearScreen(colors.lightBlue)
-        drawCentered(" FLAPPY PIXEL ", math.floor(h/2) - 2, colors.yellow, colors.lightBlue)
-        drawCentered(" Tap to Fly! ", math.floor(h/2), colors.white, colors.lightBlue)
-        drawCentered(" " .. i .. " ", math.floor(h/2) + 2, colors.white, colors.gray)
+        monitor.setBackgroundColor(colors.green)
+        monitor.setCursorPos(1, floorY)
+        monitor.write(string.rep(" ", w))
+        
+        drawCentered(" GET READY ", math.floor(h/2) - 1, colors.yellow, colors.lightBlue)
+        drawCentered(" " .. i .. " ", math.floor(h/2) + 1, colors.white, colors.gray)
         playSound("block.note_block.hat", 1.0)
         sleep(0.5)
     end
@@ -74,55 +110,59 @@ local function playGame()
 
         if event == "monitor_touch" then
             velocity = jumpPower
+            birdChar = "O" -- Flap animation
             playSound("entity.parrot.fly", 1.2, 1.0)
             
         elseif event == "timer" and p1 == gameTimer then
-            -- 1. Apply Physics
+            -- 1. Apply Physics & Progressive Difficulty
             velocity = velocity + gravity
             birdY = birdY + velocity
             local by = math.floor(birdY)
             
+            -- Revert bird char to falling state if velocity is positive
+            if velocity > 0 then birdChar = ">" end
+            
+            -- Speed increases slightly for every point you get (caps at +0.4 extra speed)
+            local currentSpeed = baseSpeed + math.min(0.4, score * 0.015)
+            
             -- 2. Update Pillars
             for i = #pillars, 1, -1 do
                 local p = pillars[i]
-                p.x = p.x - gameSpeed
+                p.x = p.x - currentSpeed
                 local px = math.floor(p.x)
                 
-                -- Check if bird passed the pillar (Score point)
+                -- Check if bird passed the pillar
                 if px <= birdX and not p.passed then
                     p.passed = true
                     score = score + 1
                     playSound("block.note_block.bell", 1.5)
                 end
                 
-                -- Remove pillars that are off screen
+                -- Remove off-screen pillars
                 if px < -2 then
                     table.remove(pillars, i)
                 end
             end
             
-            -- 3. Spawn New Pillars (FIXED ERROR LINE)
+            -- 3. Spawn New Pillars
             if #pillars == 0 or (w - pillars[#pillars].x) >= pillarSpacing then
-                -- Bulletproof spawn for continuing pillars
                 table.insert(pillars, {
                     x = w, 
-                    gapTop = math.random(2, math.max(2, h - gapSize - 1)), 
+                    gapTop = math.random(2, math.max(2, floorY - gapSize - 1)), 
                     passed = false
                 })
             end
             
             -- 4. Check Collisions
-            -- Hit the floor or ceiling
-            if by < 1 or by > h then
+            -- Hit the ceiling or the ground
+            if by < 1 or by >= floorY then
                 playing = false
             end
             
             -- Hit a pillar
             for _, p in ipairs(pillars) do
                 local px = math.floor(p.x)
-                -- The pillar is 2 blocks wide
                 if birdX == px or birdX == px + 1 then
-                    -- If the bird is NOT safely inside the gap
                     if by < p.gapTop or by >= p.gapTop + gapSize then
                         playing = false
                     end
@@ -139,12 +179,10 @@ local function playGame()
             monitor.setBackgroundColor(colors.lime)
             for _, p in ipairs(pillars) do
                 local px = math.floor(p.x)
-                -- Only draw if it's on the screen
                 if px >= 1 and px <= w then
-                    for y = 1, h do
+                    for y = 1, floorY - 1 do
                         if y < p.gapTop or y >= p.gapTop + gapSize then
                             monitor.setCursorPos(px, y)
-                            -- Ensure we don't draw off the right side of the screen
                             if px == w then
                                 monitor.write(" ")
                             else
@@ -155,17 +193,26 @@ local function playGame()
                 end
             end
             
+            -- Draw Ground
+            monitor.setBackgroundColor(colors.green)
+            monitor.setCursorPos(1, floorY)
+            -- Simple trick to make the ground look like it's moving
+            local groundPattern = (math.floor(os.clock() * 10) % 2 == 0) and "- " or " -"
+            monitor.setTextColor(colors.lime)
+            monitor.write(string.rep(groundPattern, math.ceil(w/2)))
+            
             -- Draw Bird (Yellow)
             monitor.setCursorPos(birdX, by)
             monitor.setBackgroundColor(colors.yellow)
             monitor.setTextColor(colors.black)
-            monitor.write(">")
+            monitor.write(birdChar)
             
-            -- Draw Score
-            monitor.setCursorPos(1, 1)
-            monitor.setBackgroundColor(colors.lightBlue)
+            -- Draw Score (Centered at top)
+            local scoreText = " " .. score .. " "
+            monitor.setCursorPos(math.floor((w - #scoreText) / 2) + 1, 1)
+            monitor.setBackgroundColor(colors.black)
             monitor.setTextColor(colors.white)
-            monitor.write(" " .. score .. " ")
+            monitor.write(scoreText)
             
             -- Queue the next frame
             gameTimer = os.startTimer(fpsTimer)
@@ -177,14 +224,17 @@ end
 
 -- Main Application Loop
 while true do
+    drawMenu()
+    
     local finalScore = playGame()
     
     if finalScore > highScore then
         highScore = finalScore
+        playSound("ui.toast.challenge_complete", 1.0) -- Special sound for high score!
+    else
+        playSound("entity.generic.explode", 1.0)
+        playSound("block.note_block.bass", 0.5)
     end
-    
-    playSound("entity.generic.explode", 1.0)
-    playSound("block.note_block.bass", 0.5)
     
     clearScreen(colors.black)
     drawCentered(" CRASHED! ", math.floor(h/2) - 2, colors.white, colors.red)
@@ -192,7 +242,7 @@ while true do
     drawCentered("Best: " .. highScore, math.floor(h/2) + 1, colors.yellow)
     
     local btnY = h - 1
-    local btnText = " [ RESTART ] "
+    local btnText = " [ MENU ] "
     drawCentered(btnText, btnY, colors.black, colors.green)
     
     while true do
