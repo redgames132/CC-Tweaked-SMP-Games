@@ -9,7 +9,6 @@ monitor.setTextScale(1.5)
 local w, h = monitor.getSize()
 local highScore = 0
 
--- Helper function to draw text perfectly centered
 local function drawCentered(text, yPos, txtColor, bgColor)
     monitor.setTextColor(txtColor or colors.white)
     monitor.setBackgroundColor(bgColor or colors.black)
@@ -18,7 +17,6 @@ local function drawCentered(text, yPos, txtColor, bgColor)
     monitor.write(text)
 end
 
--- Helper to clear the screen with a specific color
 local function clearScreen(color)
     monitor.setBackgroundColor(color or colors.black)
     monitor.clear()
@@ -35,7 +33,10 @@ end
 
 local function playGame()
     local score = 0
+    local lives = 3
     local playing = true
+    -- A variable to track timer difficulty, so golden targets can reduce it
+    local difficultyScore = 0 
     
     countdown()
 
@@ -46,21 +47,26 @@ local function playGame()
         monitor.setCursorPos(1, 1)
         monitor.setBackgroundColor(colors.blue)
         monitor.setTextColor(colors.white)
-        local header = " Score: " .. score
+        local header = " S:" .. score .. "  L:" .. lives
         header = header .. string.rep(" ", math.max(0, w - #header))
         monitor.write(header)
         
-        -- Generate random target coordinates (avoid row 1 to keep header clean)
+        -- Generate random target coordinates (avoid row 1)
         local tx = math.random(1, w)
         local ty = math.random(2, h)
         
-        monitor.setCursorPos(tx, ty)
-        monitor.setBackgroundColor(colors.red)
-        monitor.setTextColor(colors.white)
-        monitor.write("X")
+        -- 15% chance for a Golden Target
+        local isGold = math.random(1, 100) <= 15
+        local targetColor = isGold and colors.yellow or colors.red
+        local targetChar = isGold and "$" or "X"
         
-        -- Timer gets faster as score increases
-        local timeLimit = math.max(0.35, 2.0 - (score * 0.08))
+        monitor.setCursorPos(tx, ty)
+        monitor.setBackgroundColor(targetColor)
+        monitor.setTextColor(colors.black)
+        monitor.write(targetChar)
+        
+        -- Timer gets faster based on difficulty score
+        local timeLimit = math.max(0.35, 2.0 - (difficultyScore * 0.05))
         local timerID = os.startTimer(timeLimit)
         
         while true do
@@ -69,21 +75,50 @@ local function playGame()
             if event == "monitor_touch" then
                 local touchX, touchY = p2, p3
                 
+                -- Ignore clicks on the top status bar
+                if touchY == 1 then
+                    -- Do nothing, wait for next event
                 -- Check if they clicked the exact target
-                if touchX == tx and touchY == ty then
-                    score = score + 1
+                elseif touchX == tx and touchY == ty then
                     os.cancelTimer(timerID)
+                    
+                    if isGold then
+                        score = score + 3
+                        difficultyScore = math.max(0, difficultyScore - 2) -- Slow down timer slightly
+                    else
+                        score = score + 1
+                        difficultyScore = difficultyScore + 1
+                    end
                     
                     -- Visual hit feedback
                     monitor.setCursorPos(tx, ty)
                     monitor.setBackgroundColor(colors.lime)
-                    monitor.write("X")
+                    monitor.write(targetChar)
                     sleep(0.1)
+                    break
+                    
+                -- If they clicked anywhere else on the screen (Misclick)
+                else
+                    os.cancelTimer(timerID)
+                    lives = lives - 1
+                    
+                    -- Flash screen red for penalty
+                    clearScreen(colors.red)
+                    sleep(0.15)
+                    
+                    if lives <= 0 then playing = false end
                     break
                 end
                 
+            -- Timer runs out
             elseif event == "timer" and p1 == timerID then
-                playing = false
+                lives = lives - 1
+                
+                -- Flash screen red for missed target
+                clearScreen(colors.red)
+                sleep(0.15)
+                
+                if lives <= 0 then playing = false end
                 break
             end
         end
@@ -96,7 +131,6 @@ end
 while true do
     local finalScore = playGame()
     
-    -- Update High Score
     if finalScore > highScore then
         highScore = finalScore
     end
@@ -110,23 +144,19 @@ while true do
     -- Draw Restart Button
     local btnY = h - 1
     local btnText = " [ RESTART ] "
-    drawCentered(btnText, btnY, colors.white, colors.green)
+    drawCentered(btnText, btnY, colors.black, colors.green)
     
-    -- Wait for the player to click the restart button
     while true do
         local event, p1, p2, p3 = os.pullEvent("monitor_touch")
         local touchX, touchY = p2, p3
         
-        -- Calculate the button's boundaries
         local btnStartX = math.floor((w - #btnText) / 2) + 1
         local btnEndX = btnStartX + #btnText - 1
         
-        -- Check if touch was on the button row AND within the text width
         if touchY == btnY and touchX >= btnStartX and touchX <= btnEndX then
-            -- Visual click feedback
-            drawCentered(btnText, btnY, colors.white, colors.lime)
+            drawCentered(btnText, btnY, colors.black, colors.lime)
             sleep(0.2)
-            break -- Breaks the "wait for click" loop and restarts the game
+            break
         end
     end
 end
