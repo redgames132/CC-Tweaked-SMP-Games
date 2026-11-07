@@ -6,16 +6,10 @@ if not monitor then
     return
 end
 
-if not speaker then
-    print("Warning: No speaker found. The game will be silent.")
-end
-
--- Using scale 1.0 to give us a taller screen for the obstacles
 monitor.setTextScale(1.0) 
 local w, h = monitor.getSize()
 local highScore = 0
 
--- Ensure true randomness
 math.randomseed(os.epoch("utc"))
 
 local function playSound(soundName, pitch, volume)
@@ -41,21 +35,23 @@ local function playGame()
     local birdX = math.floor(w * 0.3)
     local birdY = math.floor(h / 2)
     local velocity = 0
-    local gravity = 0.55
-    local jumpPower = -2.0
+    
+    -- ADJUSTED PHYSICS FOR 20 FPS
+    local gravity = 0.22
+    local jumpPower = -1.15
+    local gameSpeed = 0.5 -- How much the pipes move per frame
+    local fpsTimer = 0.05 -- 20 Frames Per Second
     
     local score = 0
     local pillars = {}
     local playing = true
     
-    -- Gap configuration
-    local gapSize = 6
-    local pillarSpacing = 16
+    -- EASIER DIFFICULTY SETTINGS
+    local gapSize = 8 
+    local pillarSpacing = 24 
     
-    -- Spawn first pillar
-    table.insert(pillars, {x = w, gapTop = math.random(3, h - gapSize - 2)})
+    table.insert(pillars, {x = w, gapTop = math.random(3, h - gapSize - 2), passed = false})
 
-    -- Countdown
     for i = 3, 1, -1 do
         clearScreen(colors.lightBlue)
         drawCentered(" FLAPPY PIXEL ", math.floor(h/2) - 2, colors.yellow, colors.lightBlue)
@@ -66,14 +62,12 @@ local function playGame()
     end
     playSound("block.note_block.pling", 1.5)
 
-    -- Start the game engine timer (10 frames per second)
-    local gameTimer = os.startTimer(0.1)
+    local gameTimer = os.startTimer(fpsTimer)
 
     while playing do
         local event, p1, p2, p3 = os.pullEvent()
 
         if event == "monitor_touch" then
-            -- Flap!
             velocity = jumpPower
             playSound("entity.parrot.fly", 1.2, 1.0)
             
@@ -86,23 +80,25 @@ local function playGame()
             -- 2. Update Pillars
             for i = #pillars, 1, -1 do
                 local p = pillars[i]
-                p.x = p.x - 1 -- move left
+                p.x = p.x - gameSpeed
+                local px = math.floor(p.x)
                 
                 -- Check if bird passed the pillar (Score point)
-                if p.x == birdX then
+                if px <= birdX and not p.passed then
+                    p.passed = true
                     score = score + 1
                     playSound("block.note_block.bell", 1.5)
                 end
                 
                 -- Remove pillars that are off screen
-                if p.x < 0 then
+                if px < -2 then
                     table.remove(pillars, i)
                 end
             end
             
             -- 3. Spawn New Pillars
             if (w - pillars[#pillars].x) >= pillarSpacing then
-                table.insert(pillars, {x = w, gapTop = math.random(2, h - gapSize - 1)})
+                table.insert(pillars, {x = w, gapTop = math.random(2, h - gapSize - 1), passed = false})
             end
             
             -- 4. Check Collisions
@@ -113,9 +109,10 @@ local function playGame()
             
             -- Hit a pillar
             for _, p in ipairs(pillars) do
-                -- The pillar is 2 blocks wide (p.x and p.x + 1)
-                if birdX == p.x or birdX == p.x + 1 then
-                    -- If the bird is NOT inside the gap
+                local px = math.floor(p.x)
+                -- The pillar is 2 blocks wide
+                if birdX == px or birdX == px + 1 then
+                    -- If the bird is NOT safely inside the gap
                     if by < p.gapTop or by >= p.gapTop + gapSize then
                         playing = false
                     end
@@ -131,16 +128,24 @@ local function playGame()
             -- Draw Pillars (Green)
             monitor.setBackgroundColor(colors.lime)
             for _, p in ipairs(pillars) do
-                for y = 1, h do
-                    -- Only draw if it's NOT in the gap
-                    if y < p.gapTop or y >= p.gapTop + gapSize then
-                        monitor.setCursorPos(p.x, y)
-                        monitor.write("  ") -- 2 spaces wide
+                local px = math.floor(p.x)
+                -- Only draw if it's on the screen
+                if px >= 1 and px <= w then
+                    for y = 1, h do
+                        if y < p.gapTop or y >= p.gapTop + gapSize then
+                            monitor.setCursorPos(px, y)
+                            -- Ensure we don't draw off the right side of the screen
+                            if px == w then
+                                monitor.write(" ")
+                            else
+                                monitor.write("  ")
+                            end
+                        end
                     end
                 end
             end
             
-            -- Draw Bird (Yellow block)
+            -- Draw Bird (Yellow)
             monitor.setCursorPos(birdX, by)
             monitor.setBackgroundColor(colors.yellow)
             monitor.setTextColor(colors.black)
@@ -153,7 +158,7 @@ local function playGame()
             monitor.write(" " .. score .. " ")
             
             -- Queue the next frame
-            gameTimer = os.startTimer(0.1)
+            gameTimer = os.startTimer(fpsTimer)
         end
     end
     
@@ -168,22 +173,18 @@ while true do
         highScore = finalScore
     end
     
-    -- Crash Sound
     playSound("entity.generic.explode", 1.0)
     playSound("block.note_block.bass", 0.5)
     
-    -- Game Over Screen
     clearScreen(colors.black)
     drawCentered(" CRASHED! ", math.floor(h/2) - 2, colors.white, colors.red)
     drawCentered("Score: " .. finalScore, math.floor(h/2), colors.white)
     drawCentered("Best: " .. highScore, math.floor(h/2) + 1, colors.yellow)
     
-    -- Draw Restart Button
     local btnY = h - 1
     local btnText = " [ RESTART ] "
     drawCentered(btnText, btnY, colors.black, colors.green)
     
-    -- Wait for restart tap
     while true do
         local event, p1, p2, p3 = os.pullEvent("monitor_touch")
         local touchX, touchY = p2, p3
