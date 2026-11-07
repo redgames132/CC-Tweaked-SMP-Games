@@ -47,7 +47,7 @@ local function playGame()
     local playing = true
     
     -- FIXED DIFFICULTY SETTINGS
-    local gapSize = 5 -- Lowered from 8 to fit the screen
+    local gapSize = 5 
     local pillarSpacing = 24 
     
     -- Bulletproof spawn for first pillar
@@ -101,8 +101,8 @@ local function playGame()
                 end
             end
             
-            -- 3. Spawn New Pillars
-            if (w - pillars[#pillars].x) >= pillarSpacing then
+            -- 3. Spawn New Pillars (FIXED ERROR LINE)
+            if #pillars == 0 or (w - pillars[#pillars].x) >= pillarSpacing then
                 -- Bulletproof spawn for continuing pillars
                 table.insert(pillars, {
                     x = w, 
