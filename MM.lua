@@ -1,11 +1,16 @@
 local monitor = peripheral.find("monitor")
+local speaker = peripheral.find("speaker")
 
 if not monitor then
     print("Could not find a connected monitor.")
     return
 end
 
--- 1.5 scale provides a good resolution for drawing quadrants on a 2x2 grid
+if not speaker then
+    print("Warning: No speaker found. The game will be silent.")
+    print("Place a CC:Tweaked Speaker next to the computer for audio!")
+end
+
 monitor.setTextScale(1.5) 
 local w, h = monitor.getSize()
 local midX = math.floor(w / 2)
@@ -13,13 +18,20 @@ local midY = math.floor(h / 2)
 
 local highScore = 0
 
--- Define the 4 color zones (normal color, highlight color)
+-- Added 'pitch' values for the note block sounds
 local zones = {
-    { normal = colors.red,    flash = colors.pink },      -- 1: Top Left
-    { normal = colors.green,  flash = colors.lime },      -- 2: Top Right
-    { normal = colors.blue,   flash = colors.lightBlue }, -- 3: Bottom Left
-    { normal = colors.orange, flash = colors.yellow }     -- 4: Bottom Right
+    { normal = colors.red,    flash = colors.pink,      pitch = 0.5 }, -- Low note
+    { normal = colors.green,  flash = colors.lime,      pitch = 0.8 }, -- Mid-low note
+    { normal = colors.blue,   flash = colors.lightBlue, pitch = 1.2 }, -- Mid-high note
+    { normal = colors.orange, flash = colors.yellow,    pitch = 1.6 }  -- High note
 }
+
+local function playSound(soundName, pitch)
+    if speaker then
+        -- Volume is set to 3.0 to ensure it's loud enough
+        speaker.playSound(soundName, 3.0, pitch or 1.0)
+    end
+end
 
 local function drawCentered(text, yPos, txtColor, bgColor)
     monitor.setTextColor(txtColor or colors.white)
@@ -39,7 +51,6 @@ local function drawZone(zoneID, isFlashed)
     local startY = (zoneID == 1 or zoneID == 2) and 1 or (midY + 1)
     local endY   = (zoneID == 1 or zoneID == 2) and midY or h
 
-    -- Draw the block of color
     for y = startY, endY do
         monitor.setCursorPos(startX, y)
         monitor.write(string.rep(" ", endX - startX + 1))
@@ -61,6 +72,7 @@ local function getTouchedZone(x, y)
 end
 
 local function flashZone(zoneID, delay)
+    playSound("block.note_block.pling", zones[zoneID].pitch)
     drawZone(zoneID, true)
     sleep(delay or 0.4)
     drawZone(zoneID, false)
@@ -71,23 +83,18 @@ local function playGame()
     local sequence = {}
     local playing = true
     
-    -- Initial blank board
     drawBoard()
     sleep(1)
 
     while playing do
-        -- Add a new random step to the sequence
         table.insert(sequence, math.random(1, 4))
         
-        -- Play the sequence for the player to watch
         sleep(0.5)
         for i, step in ipairs(sequence) do
-            -- Speed up the flashes slightly as the sequence gets longer
             local flashSpeed = math.max(0.15, 0.5 - (#sequence * 0.02))
             flashZone(step, flashSpeed)
         end
         
-        -- Wait for player to repeat the sequence
         for i, expectedStep in ipairs(sequence) do
             local waitingForTap = true
             
@@ -98,13 +105,12 @@ local function playGame()
                 local touchedZone = getTouchedZone(touchX, touchY)
                 
                 if touchedZone then
-                    -- Visual feedback for the player's tap
-                    flashZone(touchedZone, 0.2)
-                    
                     if touchedZone == expectedStep then
-                        waitingForTap = false -- Correct, move to next expected tap
+                        flashZone(touchedZone, 0.2)
+                        waitingForTap = false
                     else
-                        -- Wrong tap! Game Over.
+                        -- Wrong tap: Play a low bass failure sound
+                        playSound("block.note_block.bass", 0.5)
                         monitor.setBackgroundColor(colors.red)
                         monitor.clear()
                         sleep(0.5)
@@ -113,12 +119,13 @@ local function playGame()
                 end
             end
         end
-        -- If they matched the whole sequence, loop repeats and adds 1 more step
+        
+        -- Success: Play a happy chime before the next round starts
+        playSound("entity.experience_orb.pickup", 1.0)
         sleep(0.5) 
     end
 end
 
--- Main Application Loop
 while true do
     local finalScore = playGame()
     
@@ -126,14 +133,12 @@ while true do
         highScore = finalScore
     end
     
-    -- Game Over Screen
     monitor.setBackgroundColor(colors.black)
     monitor.clear()
     drawCentered(" WRONG SEQUENCE ", math.floor(h/2) - 2, colors.white, colors.red)
     drawCentered("Score: " .. finalScore, math.floor(h/2), colors.white)
     drawCentered("Best: " .. highScore, math.floor(h/2) + 1, colors.yellow)
     
-    -- Draw Restart Button
     local btnY = h - 1
     local btnText = " [ RESTART ] "
     drawCentered(btnText, btnY, colors.black, colors.green)
@@ -146,6 +151,7 @@ while true do
         local btnEndX = btnStartX + #btnText - 1
         
         if touchY == btnY and touchX >= btnStartX and touchX <= btnEndX then
+            playSound("block.note_block.pling", 1.0)
             drawCentered(btnText, btnY, colors.black, colors.lime)
             sleep(0.2)
             break
